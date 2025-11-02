@@ -145,6 +145,8 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+Backend/.venv/
+Backend/proy_mat_backend/.env
 
 # Spyder project settings
 .spyderproject
