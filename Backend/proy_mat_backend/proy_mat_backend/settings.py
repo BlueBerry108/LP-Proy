@@ -11,16 +11,21 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
+import os
+from dotenv import load_dotenv
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+#.env q debe estar en la misma carpeta q manage.py
+load_dotenv(BASE_DIR / '.env')
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-dix!45%b$(cu7qvhvc94+btrlfqrajn$fx7ys7++&!yp23zv4%'
+SECRET_KEY = 'django-insecure-kne%xowt+j9b89#tmwcbg#^pb_xyotrwmr&)3yh653u-s2-$lc'
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -68,14 +73,25 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'proy_mat_backend.wsgi.application'
 
+#Secret_key y debug, 
+SECRET_KEY= os.environ.get('DJANGO_SECRET_KEY', 'dev-secret-temporal')
+DEBUG= os.environ.get('DEBUG', 'False') == 'True'
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+    "default": {
+        "ENGINE": "mssql",
+        "NAME": os.environ.get("DB_NAME"),
+        "USER": os.environ.get("DB_USER"),
+        "PASSWORD": os.environ.get("DB_PASS"),
+        "HOST": os.environ.get("DB_HOST"),
+        "PORT": os.environ.get("DB_PORT", "1433"),
+        "OPTIONS": {
+            "driver": "ODBC Driver 18 for SQL Server",
+            "extra_params": "Encrypt=yes;TrustServerCertificate=yes;"
+        },
     }
 }
 
