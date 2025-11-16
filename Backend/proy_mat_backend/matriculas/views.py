@@ -25,21 +25,19 @@ from .utils_enroll import (
 
 # Helper to create jwt tokens
 def get_tokens_for_user(codigo_alumno):
-    refresh = RefreshToken.for_user(user=None)  # We'll use token claims manually
-    # SimpleJWT expects a user; since we don't use Django User, create custom tokens:
-    refresh['codigo_alumno'] = codigo_alumno
+    refresh = RefreshToken()  # crea un token vacío SIN usuario
+    refresh["codigo_alumno"] = codigo_alumno
+
     access = refresh.access_token
+    access["codigo_alumno"] = codigo_alumno
+
     return {
-        'refresh': str(refresh),
-        'access': str(access),
+        "refresh": str(refresh),
+        "access": str(access),
     }
 
 # --- LOGIN ---
 class LoginView(APIView):
-    """
-    Login sencillo: recibe codigo_alumno y contra_alumno y responde con datos del alumno y token firmado.
-    Token es temporal (expira en 2 horas).
-    """
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
@@ -93,7 +91,26 @@ class SeccionesPorCursoView(generics.ListAPIView):
         codigo_curso = self.kwargs.get('codigo_curso')
         return Seccion.objects.filter(codigo_curso=codigo_curso)
 
-
+class AlumnosInscripcionesView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    def get(self, request, codigo_alumno):
+        detalles = DetalleMatricula.objects.raw(
+            "SELECT d.* FROM Detalle_matricula d JOIN Matricula m ON d.Codigo_matricula = m.Codigo_matricula WHERE m.Codigo_alumno = %s",
+            [codigo_alumno]
+        )
+        secciones = []
+        for d in detalles:
+            sec = getattr(d, 'codigo_seccion', None)
+            if sec:
+                # si es objeto FK
+                if hasattr(sec, 'codigo_seccion'):
+                    secciones.append(sec.codigo_seccion)
+                else:
+                    try:
+                        secciones.append(int(sec))
+                    except:
+                        pass
+        return Response({"secciones": secciones})
 
 # --- Inscripción / Matriculación ---
 class EnrollView(APIView):
