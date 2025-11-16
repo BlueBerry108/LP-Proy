@@ -8,7 +8,8 @@ from .views import (
     DocenteListCreateView, DocenteRetrieveUpdateDeleteView,
     SeccionListCreateView, SeccionRetrieveUpdateDeleteView,
     DetalleMatriculaListCreateView, DetalleMatriculaRetrieveUpdateDeleteView,
-    MatriculaListCreateView, MatriculaRetrieveUpdateDeleteView
+    MatriculaListCreateView, MatriculaRetrieveUpdateDeleteView,
+    LoginView, CursosDisponiblesView, SeccionesPorCursoView, EnrollView
 )
 
 urlpatterns = [
@@ -35,4 +36,9 @@ urlpatterns = [
     # MATRÍCULA
     path('matriculas/', MatriculaListCreateView.as_view(), name='matricula-list'),
     path('matriculas/<int:codigo_matricula>/', MatriculaRetrieveUpdateDeleteView.as_view(), name='matricula-detail'),
+    
+    path('auth/login/', LoginView.as_view(), name='login'),
+    path('alumnos/<int:codigo_alumno>/cursos/', CursosDisponiblesView.as_view(), name='cursos-por-alumno'),
+    path('cursos/<int:codigo_curso>/secciones/', SeccionesPorCursoView.as_view(), name='secciones-por-curso'),
+    path('matricular/', EnrollView.as_view(), name='matricular'),
 ]
