@@ -13,12 +13,28 @@ class AlumnoSerializer(serializers.ModelSerializer):
         model = Alumno
         fields = '__all__'
 
+class SimpleAlumnoSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Alumno
+        fields = ['codigo_alumno', 'nombre_alumno', 'apellido_alumno', 'ciclo_alumno']
 
-class CursosSerializer(serializers.ModelSerializer):
+class CursoSerializer(serializers.ModelSerializer):
     class Meta:
         model = Cursos
-        fields = '__all__'
+        fields = ['codigo_curso', 'nombre_curso', 'desc_curso', 'cant_max_alumnos', 'nro_ciclo', 'hrs_semanales_curso', 'creditos_curso']
 
+class SectionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Seccion
+        fields = ['codigo_seccion', 'horario_seccion', 'codigo_docente', 'cant_max_alumnos', 'codigo_curso']
+
+class EnrollRequestSerializer(serializers.Serializer):
+    codigo_alumno = serializers.IntegerField()
+    secciones = serializers.ListField(child=serializers.IntegerField(), min_length=1)
+
+class LoginSerializer(serializers.Serializer):
+    codigo_alumno = serializers.IntegerField()
+    contra_alumno = serializers.CharField(write_only=True)
 
 class DocenteSerializer(serializers.ModelSerializer):
     class Meta:
@@ -42,3 +58,4 @@ class MatriculaSerializer(serializers.ModelSerializer):
     class Meta:
         model = Matricula
         fields = '__all__'
+        
