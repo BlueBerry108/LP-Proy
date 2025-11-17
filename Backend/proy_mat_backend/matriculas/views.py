@@ -4,12 +4,14 @@
 #   - ListCreateAPIView → listar y crear
 #   - RetrieveUpdateDestroyAPIView → ver, actualizar y eliminar
 
+import base64
+import logging
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework import status, permissions, generics
+from rest_framework import status, permissions, generics, authentication 
 from django.shortcuts import get_object_or_404
 from django.db import transaction
-from datetime import datetime
 from rest_framework_simplejwt.tokens import RefreshToken
 import bcrypt
 
@@ -23,13 +25,30 @@ from .utils_enroll import (
     create_matricula_and_get_id, create_detalle_and_get_id
 )
 
+logger = logging.getLogger(__name__)
+
+# --- Fake user para JWT ---
+class FakeUser:
+    """Objeto temporal para generar tokens JWT usando SimpleJWT."""
+    def __init__(self, user_id):
+        self.id = user_id
+        self.is_active = True   # SimpleJWT requiere esto
+
 # Helper to create jwt tokens
-def get_tokens_for_user(codigo_alumno):
-    refresh = RefreshToken()  # crea un token vacío SIN usuario
-    refresh["codigo_alumno"] = codigo_alumno
+def get_tokens_for_user(alumno):
+    """
+    SimpleJWT exige un objeto tipo User. Como Alumno no hereda de User,
+    usamos un FakeUser para poder generar tokens válidos.
+    """
+    fake = FakeUser(alumno.codigo_alumno)
+    
+    refresh = RefreshToken.for_user(fake)
+
+    # Guardamos el código del alumno en el token
+    refresh["codigo_alumno"] = alumno.codigo_alumno
 
     access = refresh.access_token
-    access["codigo_alumno"] = codigo_alumno
+    access["codigo_alumno"] = alumno.codigo_alumno
 
     return {
         "refresh": str(refresh),
@@ -39,47 +58,57 @@ def get_tokens_for_user(codigo_alumno):
 # --- LOGIN ---
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
-
+    authentication_classes = []
+    
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+
         codigo = serializer.validated_data['codigo_alumno']
         contra = serializer.validated_data['contra_alumno']
 
+        # Buscar alumno
         try:
             alumno = Alumno.objects.get(codigo_alumno=codigo)
         except Alumno.DoesNotExist:
             return Response({"detail": "Alumno no encontrado"}, status=status.HTTP_404_NOT_FOUND)
-        stored = alumno.contra_alumno or ''
-        # Si stored empieza con 'bcrypt$' -> hashed; Sino compara el plaintext y rehash
+
+        stored = alumno.contra_alumno or ""
+
+        # --- Contraseña en bcrypt ---
         if stored.startswith("bcrypt$"):
-            hashed = stored.split("bcrypt$")[1].encode()
+            hashed = stored.replace("bcrypt$", "").encode()
+
             if not bcrypt.checkpw(contra.encode(), hashed):
                 return Response({"detail": "Credenciales inválidas"}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # --- Contraseña antigua en texto plano ---
         else:
-            # plaintext comparison (legacy)
             if stored != contra:
                 return Response({"detail": "Credenciales inválidas"}, status=status.HTTP_401_UNAUTHORIZED)
-            # re-hash and update DB (improve security)
+
+            # Actualizar a bcrypt
             hashed = bcrypt.hashpw(contra.encode(), bcrypt.gensalt())
             alumno.contra_alumno = "bcrypt$" + hashed.decode()
             alumno.save()
-            
-        # Generar token firmado
-        tokens = get_tokens_for_user(codigo)
+
+        # Generar tokens JWT válidos
+        tokens = get_tokens_for_user(alumno)
+
+        # Serializar datos del alumno
         data = SimpleAlumnoSerializer(alumno).data
+
         return Response({"tokens": tokens, "alumno": data}, status=status.HTTP_200_OK)
 
 
 # --- Cursos disponibles por ciclo del alumno ---
 class CursosDisponiblesView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+
     def get(self, request, codigo_alumno):
         alumno = get_object_or_404(Alumno, codigo_alumno=codigo_alumno)
-        ciclo = alumno.ciclo_alumno
-        cursos = Cursos.objects.filter(nro_ciclo=ciclo)
-        ser = CursoSerializer(cursos, many=True)
-        return Response(ser.data)
+        cursos = Cursos.objects.filter(nro_ciclo=alumno.ciclo_alumno)
+        return Response(CursoSerializer(cursos, many=True).data)
 
 
 # --- Secciones por curso ---
@@ -88,28 +117,34 @@ class SeccionesPorCursoView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        codigo_curso = self.kwargs.get('codigo_curso')
-        return Seccion.objects.filter(codigo_curso=codigo_curso)
+        return Seccion.objects.filter(codigo_curso=self.kwargs.get("codigo_curso"))
 
+# --- Lista Secciones Inscritas ---
 class AlumnosInscripcionesView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+
     def get(self, request, codigo_alumno):
         detalles = DetalleMatricula.objects.raw(
-            "SELECT d.* FROM Detalle_matricula d JOIN Matricula m ON d.Codigo_matricula = m.Codigo_matricula WHERE m.Codigo_alumno = %s",
-            [codigo_alumno]
+            """
+            SELECT d.*
+            FROM Detalle_matricula d
+            JOIN Matricula m ON d.Codigo_matricula = m.Codigo_matricula
+            WHERE m.Codigo_alumno = %s
+            """,
+            [codigo_alumno],
         )
         secciones = []
         for d in detalles:
-            sec = getattr(d, 'codigo_seccion', None)
-            if sec:
-                # si es objeto FK
-                if hasattr(sec, 'codigo_seccion'):
-                    secciones.append(sec.codigo_seccion)
-                else:
-                    try:
-                        secciones.append(int(sec))
-                    except:
-                        pass
+            sec = getattr(d, "codigo_seccion", None)
+            if hasattr(sec, "codigo_seccion"):  # FK objeto
+                secciones.append(sec.codigo_seccion)
+            else:
+                try:
+                    secciones.append(int(sec))
+                except Exception:
+                    # ignorar si no convertible
+                    pass
+
         return Response({"secciones": secciones})
 
 # --- Inscripción / Matriculación ---
@@ -120,90 +155,90 @@ class EnrollView(APIView):
     def post(self, request):
         ser = EnrollRequestSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
-        codigo_alumno = ser.validated_data['codigo_alumno']
-        secciones_ids = ser.validated_data['secciones']
+
+        codigo_alumno = ser.validated_data["codigo_alumno"]
+        secciones_ids = ser.validated_data["secciones"]
 
         alumno = get_object_or_404(Alumno, codigo_alumno=codigo_alumno)
 
-        # fetch sections requested
         secciones_obj = list(Seccion.objects.filter(codigo_seccion__in=secciones_ids))
         if len(secciones_obj) != len(secciones_ids):
-            return Response({"detail": "Alguna sección no existe"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Alguna sección no existe"}, status=400)
 
-        # validate no duplicate course names and build info
-        seccion_info = []
-        for s in secciones_obj:
-            curso = s.codigo_curso
-            nombre = (curso.nombre_curso or '').strip() if curso else ''
-            seccion_info.append({'seccion': s, 'curso': curso, 'nombre': nombre})
-        nombres = [si['nombre'] for si in seccion_info]
+        # Verificar duplicados de cursos
+        nombres = [((s.codigo_curso.nombre_curso or "").strip() if s.codigo_curso else "") for s in secciones_obj]
         if len(nombres) != len(set(nombres)):
-            return Response({"detail": "Hay cursos repetidos (mismo nombre)."}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({"detail": "Hay cursos repetidos."}, status=400)
 
-        # validate no conflicts between new sections themselves
+        # Conflictos entre nuevos
         for i in range(len(secciones_obj)):
             for j in range(i + 1, len(secciones_obj)):
                 h1 = parse_horario(secciones_obj[i].horario_seccion or "")
                 h2 = parse_horario(secciones_obj[j].horario_seccion or "")
                 if h1 and h2 and schedules_conflict(h1, h2):
-                    return Response({"detail": "Conflicto de horario entre las secciones seleccionadas."}, status=status.HTTP_400_BAD_REQUEST)
+                    return Response({"detail": "Conflicto de horario entre las secciones seleccionadas."}, status=400)
 
-        # get existing enrolled sections for this alumno
-        detalles_alumno = DetalleMatricula.objects.raw(
+        # Buscar inscripciones previas
+        detalles_previos = DetalleMatricula.objects.raw(
             """
             SELECT d.*
             FROM Detalle_matricula d
             JOIN Matricula m ON d.Codigo_matricula = m.Codigo_matricula
             WHERE m.Codigo_alumno = %s
             """,
-            [alumno.codigo_alumno]
+            [codigo_alumno],
         )
+
         inscritos = []
-        for d in detalles_alumno:
-            # d.codigo_seccion may be FK actual object or int depending on inspectdb mapping; handle both:
-            sec = getattr(d, 'codigo_seccion', None)
-            if sec:
-                # if sec is id, try to fetch
-                if hasattr(sec, 'horario_seccion'):
-                    inscritos.append(sec)
-                else:
-                    try:
-                        inscritos.append(Seccion.objects.get(codigo_seccion=sec))
-                    except Seccion.DoesNotExist:
-                        pass
+        for d in detalles_previos:
+            sec = getattr(d, "codigo_seccion", None)
+            if hasattr(sec, "horario_seccion"):
+                inscritos.append(sec)
+            else:
+                try:
+                    inscritos.append(Seccion.objects.get(codigo_seccion=sec))
+                except Exception:
+                    pass
 
-        inscritos_horarios = []
+        horarios_previos = []
         for sec in inscritos:
-            inscritos_horarios += parse_horario(sec.horario_seccion or "")
+            horarios_previos += parse_horario(sec.horario_seccion or "")
 
-        # check conflicts new vs existing
+        # Conflicto con previos
         for s in secciones_obj:
-            h_solic = parse_horario(s.horario_seccion or "")
-            if h_solic and inscritos_horarios and schedules_conflict(h_solic, inscritos_horarios):
-                return Response({"detail": f"Conflicto de horario con secciones ya inscritas al intentar inscribir sección {s.codigo_seccion}"}, status=status.HTTP_400_BAD_REQUEST)
+            h = parse_horario(s.horario_seccion or "")
+            if h and horarios_previos and schedules_conflict(h, horarios_previos):
+                return Response({"detail": f"Conflicto con sección ya inscrita: {s.codigo_seccion}"}, status=400)
 
-        # check capacity
+        # Aforo
         for s in secciones_obj:
-            if s.cant_max_alumnos:
-                count = DetalleMatricula.objects.filter(codigo_seccion=s).count()
-                if count >= (s.cant_max_alumnos or 0):
-                    return Response({"detail": f"La sección {s.codigo_seccion} ya está completa."}, status=status.HTTP_400_BAD_REQUEST)
+            count = DetalleMatricula.objects.filter(codigo_seccion=s).count()
+            if count >= (s.cant_max_alumnos or 0):
+                return Response({"detail": f"La sección {s.codigo_seccion} está llena."}, status=400)
 
-        # OK — create Matricula and details (SQL insertion helpers)
+        # Crear matrícula
         try:
-            with transaction.atomic():
-                nueva_matricula_id = create_matricula_and_get_id(alumno.codigo_alumno, pago_total=0, pago_mensual=0, creditos_finales=0)
-                detalles_creados = []
-                for s in secciones_obj:
-                    det_id = create_detalle_and_get_id(nueva_matricula_id, s.codigo_curso.codigo_curso if s.codigo_curso else None, s.codigo_seccion)
-                    detalles_creados.append({
+            matricula_id = create_matricula_and_get_id(
+                alumno.codigo_alumno, pago_total=0, pago_mensual=0, creditos_finales=0
+            )
+
+            detalles_creados = []
+            for s in secciones_obj:
+                det_id = create_detalle_and_get_id(
+                    matricula_id,
+                    s.codigo_curso.codigo_curso if s.codigo_curso else None,
+                    s.codigo_seccion,
+                )
+                detalles_creados.append(
+                    {
                         "cod_det_matricula": det_id,
                         "codigo_curso": s.codigo_curso.codigo_curso if s.codigo_curso else None,
-                        "codigo_seccion": s.codigo_seccion
-                    })
-                return Response({
-                    "matricula_id": nueva_matricula_id,
-                    "detalles": detalles_creados
-                }, status=status.HTTP_201_CREATED)
+                        "codigo_seccion": s.codigo_seccion,
+                    }
+                )
+
+            return Response({"matricula_id": matricula_id, "detalles": detalles_creados}, status=201)
+
         except Exception as e:
-            return Response({"detail": f"Error creando matrícula: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.exception("Error creando matrícula")
+            return Response({"detail": f"Error creando matrícula: {str(e)}"}, status=500)

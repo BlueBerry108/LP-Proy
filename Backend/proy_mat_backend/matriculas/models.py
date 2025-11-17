@@ -33,17 +33,6 @@ class Cursos(models.Model):
         managed = False
         db_table = 'Cursos'
 
-
-class DetalleMatricula(models.Model):
-    cod_det_matricula = models.IntegerField(db_column='Cod_det_matricula', primary_key=True)  # Field name made lowercase.
-    codigo_curso = models.ForeignKey(Cursos, models.DO_NOTHING, db_column='Codigo_curso', blank=True, null=True)  # Field name made lowercase.
-    codigo_seccion = models.ForeignKey('Seccion', models.DO_NOTHING, db_column='Codigo_seccion', blank=True, null=True)  # Field name made lowercase.
-
-    class Meta:
-        managed = False
-        db_table = 'Detalle_matricula'
-
-
 class Docente(models.Model):
     codigo_docente = models.IntegerField(db_column='Codigo_docente', primary_key=True)  # Field name made lowercase.
     nombre_docente = models.CharField(db_column='Nombre_docente', max_length=100, blank=True, null=True)  # Field name made lowercase.
@@ -53,6 +42,16 @@ class Docente(models.Model):
         managed = False
         db_table = 'Docente'
 
+class Seccion(models.Model):
+    codigo_seccion = models.IntegerField(db_column='Codigo_seccion', primary_key=True)  # Field name made lowercase.
+    horario_seccion = models.CharField(db_column='Horario_seccion', max_length=255, blank=True, null=True)  # Field name made lowercase.
+    codigo_docente = models.ForeignKey(Docente, models.DO_NOTHING, db_column='Codigo_docente', blank=True, null=True)  # Field name made lowercase.
+    cant_max_alumnos = models.IntegerField(db_column='Cant_max_alumnos', blank=True, null=True)  # Field name made lowercase.
+    codigo_curso = models.ForeignKey(Cursos, models.DO_NOTHING, db_column='Codigo_curso', blank=True, null=True)  # Field name made lowercase.
+
+    class Meta:
+        managed = False
+        db_table = 'Seccion'
 
 class Matricula(models.Model):
     codigo_matricula = models.IntegerField(db_column='Codigo_matricula', primary_key=True)  # Field name made lowercase.
@@ -65,18 +64,22 @@ class Matricula(models.Model):
     class Meta:
         managed = False
         db_table = 'Matricula'
+        
 
-
-class Seccion(models.Model):
-    codigo_seccion = models.IntegerField(db_column='Codigo_seccion', primary_key=True)  # Field name made lowercase.
-    horario_seccion = models.CharField(db_column='Horario_seccion', max_length=255, blank=True, null=True)  # Field name made lowercase.
-    codigo_docente = models.ForeignKey(Docente, models.DO_NOTHING, db_column='Codigo_docente', blank=True, null=True)  # Field name made lowercase.
-    cant_max_alumnos = models.IntegerField(db_column='Cant_max_alumnos', blank=True, null=True)  # Field name made lowercase.
+class DetalleMatricula(models.Model):
+    cod_det_matricula = models.IntegerField(db_column='Cod_det_matricula', primary_key=True)  # Field name made lowercase.
     codigo_curso = models.ForeignKey(Cursos, models.DO_NOTHING, db_column='Codigo_curso', blank=True, null=True)  # Field name made lowercase.
-
+    codigo_seccion = models.ForeignKey('Seccion', models.DO_NOTHING, db_column='Codigo_seccion', blank=True, null=True)  # Field name made lowercase.
+    codigo_matricula = models.ForeignKey(Matricula, models.DO_NOTHING, db_column='Codigo_matricula', blank=True,null=True)
+    
     class Meta:
         managed = False
-        db_table = 'Seccion'
+        db_table = 'Detalle_matricula'
+
+
+
+
+
 
 
 class Sysdiagrams(models.Model):

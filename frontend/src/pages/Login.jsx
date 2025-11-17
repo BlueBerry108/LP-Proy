@@ -1,10 +1,12 @@
 import React, { useState } from "react";
 import API from "../api/axios";
+import { useNavigate } from "react-router-dom";
 
 export default function Login() {
   const [codigo, setCodigo] = useState("");
   const [pass, setPass] = useState("");
   const [err, setErr] = useState("");
+  const navigate = useNavigate();
 
   async function submit(e) {
     e.preventDefault();
@@ -15,7 +17,7 @@ export default function Login() {
       localStorage.setItem("access_token", tokens.access);
       localStorage.setItem("refresh_token", tokens.refresh);
       localStorage.setItem("alumno", JSON.stringify(alumno));
-      window.location.href = "/dashboard";
+      setTimeout(() => navigate("/dashboard"), 50);
     } catch (error) {
       setErr(error.response?.data?.detail || "Error login");
     }

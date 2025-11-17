@@ -143,13 +143,6 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-#ESTO ES SOLO PARA COMPROBAR SI SALEN DATOS POR LO MENOS COMO JSON, SE PUEDE BORRAR DESPUES####
-REST_FRAMEWORK = {
-    'DEFAULT_RENDERER_CLASSES': (
-        'rest_framework.renderers.JSONRenderer',
-    )
-}
-
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
 ]
@@ -172,7 +165,7 @@ REST_FRAMEWORK = {
         'rest_framework.renderers.JSONRenderer',
     ),
     'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        'matriculas.authentication.AlumnoJWTAuthentication',
     ),
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
