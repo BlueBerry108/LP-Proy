@@ -2,6 +2,7 @@ LP-Proy
 # Requerimientos:
 - python 3.17 o superior 
 - ODBC Driver 18 for SQL Server
+- Tailwindcss.exe
 # Pasos iniciales a seguir:
 - activar el entorno virtual por la terminal (entrar a la primera carpeta --> cd Backend): .venv\Scripts\Activate
 - Si aparece el error de ejecución de scripts: Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
